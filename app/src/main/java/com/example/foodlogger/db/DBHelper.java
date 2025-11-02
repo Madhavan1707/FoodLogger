@@ -18,12 +18,14 @@ public class DBHelper extends SQLiteOpenHelper {
         Log.d(TAG, "onCreate: creating tables");
         db.execSQL("CREATE TABLE foods (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, cal REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL, protein REAL NOT NULL);");
         db.execSQL("CREATE TABLE meal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, entry_date TEXT NOT NULL, meal_type TEXT NOT NULL, food_id INTEGER NOT NULL, grams REAL NOT NULL, cal REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL, protein REAL NOT NULL, FOREIGN KEY(food_id) REFERENCES foods(id) ON DELETE CASCADE);");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_foods_name ON foods(name);");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
         Log.w(TAG, "onUpgrade: " + oldV + " -> " + newV + ", dropping tables");
         db.execSQL("DROP TABLE IF EXISTS meal_entries");
         db.execSQL("DROP TABLE IF EXISTS foods");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_foods_name ON foods(name);");
         onCreate(db);
     }
 
@@ -40,20 +42,29 @@ public class DBHelper extends SQLiteOpenHelper {
     }
 
     public Cursor getAllFoods() {
-        Log.d(TAG, "getAllFoods");
-        return getReadableDatabase().rawQuery(
-                "SELECT id, name, cal, carbs, fat, protein FROM foods ORDER BY name", null);
-    }
-
-    // NEW: filtered foods for search
-    public Cursor getFoodsFiltered(String query) {
-        Log.d(TAG, "getFoodsFiltered: q=" + query);
-        String q = "%" + (query == null ? "" : query.trim()) + "%";
-        return getReadableDatabase().rawQuery(
-                "SELECT id, name, cal, carbs, fat, protein FROM foods WHERE name LIKE ? ORDER BY name",
-                new String[]{ q }
+        SQLiteDatabase db = getReadableDatabase();
+        return db.rawQuery(
+                "SELECT rowid AS _id, name, cal, carbs, fat, protein " +
+                        "FROM foods " +
+                        "ORDER BY name COLLATE NOCASE ASC",
+                null
         );
     }
+
+
+
+    public Cursor getFoodsFiltered(String q) {
+        SQLiteDatabase db = getReadableDatabase();
+        return db.rawQuery(
+                "SELECT rowid AS _id, name, cal, carbs, fat, protein " +
+                        "FROM foods " +
+                        "WHERE name LIKE ? COLLATE NOCASE " +   // case-insensitive filter
+                        "ORDER BY name COLLATE NOCASE ASC",
+                new String[]{"%" + q + "%"}
+        );
+    }
+
+
 
     // Log meal
     public long insertMeal(String date, String mealType, long foodId, double grams,
