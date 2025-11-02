@@ -55,7 +55,7 @@ public class LogMealFragment extends Fragment {
     private RadioButton rbBreakfast, rbLunch, rbSnack, rbDinner;
 
     private MealEntryAdapter mealAdapter;
-    private final SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+    private final SimpleDateFormat fmt = new SimpleDateFormat("dd-MM-yyyy", Locale.US);
     private View root;
 
     @Nullable @Override
