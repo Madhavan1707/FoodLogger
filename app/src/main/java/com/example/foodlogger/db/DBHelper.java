@@ -29,6 +29,20 @@ public class DBHelper extends SQLiteOpenHelper {
         onCreate(db);
     }
 
+    public int updateMealValues(long mealId, double grams, double cal, double carbs, double fat, double protein){
+        ContentValues cv = new ContentValues();
+        cv.put("grams",   grams);
+        cv.put("cal",     cal);
+        cv.put("carbs",   carbs);
+        cv.put("fat",     fat);
+        cv.put("protein", protein);
+
+        int rows = getWritableDatabase().update("meal_entries", cv, "id = ?", new String[]{ String.valueOf(mealId) });
+        Log.d(TAG, "updateMealValues: mealId=" + mealId + " rows=" + rows);
+        return rows;
+    }
+
+
     // Foods CRUD
     public long insertFood(String name, double cal, double carbs, double fat, double protein) {
         Log.d(TAG, "insertFood: name=" + name + " cal=" + cal + " carbs=" + carbs + " fat=" + fat + " protein=" + protein);

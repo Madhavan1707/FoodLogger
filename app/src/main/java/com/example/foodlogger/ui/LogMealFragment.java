@@ -87,12 +87,18 @@ public class LogMealFragment extends Fragment {
         rvMeals.setHasFixedSize(false);
         rvMeals.setNestedScrollingEnabled(false);
 
-        mealAdapter = new MealEntryAdapter(id -> {
-            Log.d(TAG, "delete meal id=" + id);
-            db.deleteMeal(id);
-            loadMeals();
-            loadTotals(root);
-        });
+        mealAdapter = new MealEntryAdapter(
+                id -> {
+                    Log.d(TAG, "delete meal id=" + id);
+                    db.deleteMeal(id);
+                    loadMeals();
+                    loadTotals(root);
+                },
+                (id, grams, cal, carbs, fat, prot, name) -> {
+                    showEditMealDialog(id, grams, cal, carbs, fat, prot, name);
+                }
+        );
+
         rvMeals.setAdapter(mealAdapter);
 
         // initial loads
@@ -101,6 +107,60 @@ public class LogMealFragment extends Fragment {
 
         return root;
     }
+    private void showEditMealDialog(long mealId, double oldGrams, double oldCal, double oldCarbs, double oldFat, double oldProt, String name){
+        LinearLayout box = new LinearLayout(getContext());
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+
+        TextView hint = new TextView(getContext());
+        hint.setText("Edit amount (grams). Macros will adjust automatically.");
+        box.addView(hint);
+
+        final EditText input = new EditText(getContext());
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setHint("grams");
+        input.setText(String.format(Locale.US, "%.0f", oldGrams));
+        box.addView(input);
+
+        new android.app.AlertDialog.Builder(getContext())
+                .setTitle("Edit " + name)
+                .setView(box)
+                .setPositiveButton("Save", (d,w) -> {
+                    String s = input.getText().toString().trim();
+                    if (s.isEmpty()) {
+                        Toast.makeText(getContext(), "Please enter grams", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    try {
+                        double newGrams = Double.parseDouble(s);
+                        if (newGrams <= 0) {
+                            Toast.makeText(getContext(), "Amount must be > 0", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        // Scale macros linearly by grams change
+                        double factor = newGrams / oldGrams;
+                        double newCal   = Math.round(oldCal   * factor);
+                        double newCarbs = Math.round(oldCarbs * factor * 10.0) / 10.0;
+                        double newFat   = Math.round(oldFat   * factor * 10.0) / 10.0;
+                        double newProt  = Math.round(oldProt  * factor * 10.0) / 10.0;
+
+                        int rows = db.updateMealValues(mealId, newGrams, newCal, newCarbs, newFat, newProt);
+                        Log.d(TAG, "updateMealValues rows=" + rows);
+
+                        loadMeals();
+                        loadTotals(root);
+                        Toast.makeText(getContext(), "Updated", Toast.LENGTH_SHORT).show();
+                    } catch (NumberFormatException ex){
+                        Log.e(TAG, "edit grams parse error", ex);
+                        Toast.makeText(getContext(), "Enter a valid number", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+
 
     private void setupMealButtons() {
         // default selection
@@ -350,20 +410,41 @@ public class LogMealFragment extends Fragment {
     }
 
     static class MealEntryAdapter extends RecyclerView.Adapter<MealEntryAdapter.VH> {
-        private Cursor cursor; interface OnDelete{ void onDel(long id);} private final OnDelete onDelete; private static final String TAG = "MealEntryAdp";
-        MealEntryAdapter(OnDelete onDelete){ this.onDelete = onDelete; }
+        interface OnDelete { void onDel(long id); }
+        interface OnEdit   { void onEdit(long id, double grams, double cal, double carbs, double fat, double prot, String name); }
+
+        private Cursor cursor;
+        private final OnDelete onDelete;
+        private final OnEdit onEdit;
+        private static final String TAG = "MealEntryAdp";
+
+        MealEntryAdapter(OnDelete onDelete, OnEdit onEdit){
+            this.onDelete = onDelete;
+            this.onEdit = onEdit;
+        }
         void submitCursor(Cursor c){ this.cursor=c; notifyDataSetChanged(); Log.d(TAG, "submitCursor count=" + (c==null?0:c.getCount())); }
         @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup p, int v){
             return new VH(LayoutInflater.from(p.getContext()).inflate(R.layout.item_meal_entry, p, false));
         }
         @Override public void onBindViewHolder(@NonNull VH h, int pos){
             cursor.moveToPosition(pos);
-            long id = cursor.getLong(0); double grams=cursor.getDouble(1), cal=cursor.getDouble(2),
-                    carbs=cursor.getDouble(3), fat=cursor.getDouble(4), prot=cursor.getDouble(5);
+            long id = cursor.getLong(0);
+            double grams = cursor.getDouble(1), cal = cursor.getDouble(2),
+                    carbs = cursor.getDouble(3), fat = cursor.getDouble(4), prot = cursor.getDouble(5);
             String name = cursor.getString(6);
+
             h.top.setText(String.format(Locale.US, "%s — %.0fg", name, grams));
             h.bottom.setText(String.format(Locale.US, "%.0f kcal | C %.1f | F %.1f | P %.1f", cal, carbs, fat, prot));
-            h.del.setOnClickListener(v->{ Log.d(TAG, "delete click id=" + id); onDelete.onDel(id); });
+
+            h.itemView.setOnClickListener(v -> {
+                Log.d(TAG, "edit click id=" + id);
+                onEdit.onEdit(id, grams, cal, carbs, fat, prot, name);
+            });
+
+            h.del.setOnClickListener(v -> {
+                Log.d(TAG, "delete click id=" + id);
+                onDelete.onDel(id);
+            });
         }
         @Override public int getItemCount(){ return cursor==null?0:cursor.getCount(); }
         static class VH extends RecyclerView.ViewHolder {
