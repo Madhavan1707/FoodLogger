@@ -2,18 +2,23 @@ package com.example.foodlogger.ui;
 
 import android.app.DatePickerDialog;
 import android.database.Cursor;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextWatcher;
+import android.text.style.StyleSpan;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.RadioGroup;
+import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,7 +44,9 @@ public class LogMealFragment extends Fragment {
     private DBHelper db;
     private RecyclerView rvMeals;
     private EditText etDate, etSearch;
-    private RadioGroup rgMeal;
+    // 2x2 meal buttons
+    private RadioButton rbBreakfast, rbLunch, rbSnack, rbDinner;
+
     private MealEntryAdapter mealAdapter;
     private final SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
     private View root;
@@ -50,18 +57,29 @@ public class LogMealFragment extends Fragment {
         root = inf.inflate(R.layout.fragment_log_meal, container, false);
 
         db = new DBHelper(requireContext());
+
         etDate = root.findViewById(R.id.etDate);
         etDate.setText(fmt.format(new Date()));
         etDate.setOnClickListener(vw -> pickDate());
 
-        rgMeal = root.findViewById(R.id.rgMeal);
+        // find 2x2 radio buttons
+        rbBreakfast = root.findViewById(R.id.rbBreakfast);
+        rbLunch     = root.findViewById(R.id.rbLunch);
+        rbSnack     = root.findViewById(R.id.rbSnack);
+        rbDinner    = root.findViewById(R.id.rbDinner);
 
-        // Search bar opens picker dialog only when tapped
+        setupMealButtons(); // handles exclusivity + reload
+
+        // Search bar opens picker dialog
         etSearch = root.findViewById(R.id.etSearch);
         etSearch.setOnClickListener(v -> openFoodPickerDialog());
 
+        // Logged items list
         rvMeals = root.findViewById(R.id.rvMeals);
         rvMeals.setLayoutManager(new LinearLayoutManager(getContext()));
+        rvMeals.setHasFixedSize(false);
+        rvMeals.setNestedScrollingEnabled(false);
+
         mealAdapter = new MealEntryAdapter(id -> {
             Log.d(TAG, "delete meal id=" + id);
             db.deleteMeal(id);
@@ -70,11 +88,6 @@ public class LogMealFragment extends Fragment {
         });
         rvMeals.setAdapter(mealAdapter);
 
-        rgMeal.setOnCheckedChangeListener((g, id) -> {
-            Log.d(TAG, "meal changed " + currentMealType());
-            loadMeals();
-        });
-
         // initial loads
         loadMeals();
         loadTotals(root);
@@ -82,8 +95,28 @@ public class LogMealFragment extends Fragment {
         return root;
     }
 
+    private void setupMealButtons() {
+        // default selection
+        rbBreakfast.setChecked(true);
+
+        CompoundButton.OnCheckedChangeListener listener = (button, isChecked) -> {
+            if (!isChecked) return;
+            // manual exclusivity
+            rbBreakfast.setChecked(button == rbBreakfast);
+            rbLunch.setChecked(button == rbLunch);
+            rbSnack.setChecked(button == rbSnack);
+            rbDinner.setChecked(button == rbDinner);
+            // refresh list for selected meal
+            loadMeals();
+        };
+
+        rbBreakfast.setOnCheckedChangeListener(listener);
+        rbLunch.setOnCheckedChangeListener(listener);
+        rbSnack.setOnCheckedChangeListener(listener);
+        rbDinner.setOnCheckedChangeListener(listener);
+    }
+
     private void openFoodPickerDialog() {
-        // Build a simple dialog with (search + list) entirely in code to avoid extra XML files
         LinearLayout container = new LinearLayout(getContext());
         container.setOrientation(LinearLayout.VERTICAL);
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
@@ -99,12 +132,9 @@ public class LogMealFragment extends Fragment {
         container.addView(rv);
 
         FoodsAdapterForDialog adapter = new FoodsAdapterForDialog((foodId, name, cal, carbs, fat, prot) -> {
-            // After pick, ask grams then insert
             showAddGramsDialog(foodId, name, cal, carbs, fat, prot);
         });
         rv.setAdapter(adapter);
-
-        // initial load (no filter)
         adapter.submitCursor(db.getAllFoods());
 
         etQuery.addTextChangedListener(new TextWatcher() {
@@ -207,10 +237,9 @@ public class LogMealFragment extends Fragment {
     }
 
     private String currentMealType(){
-        int id = rgMeal.getCheckedRadioButtonId();
-        if(id==R.id.rbBreakfast) return "Breakfast";
-        if(id==R.id.rbLunch) return "Lunch";
-        if(id==R.id.rbSnack) return "Snack";
+        if (rbBreakfast.isChecked()) return "Breakfast";
+        if (rbLunch.isChecked())     return "Lunch";
+        if (rbSnack.isChecked())     return "Snack";
         return "Dinner";
     }
 
@@ -219,34 +248,57 @@ public class LogMealFragment extends Fragment {
         Log.d(TAG, "meals count=" + (c==null?0:c.getCount()));
         mealAdapter.submitCursor(c);
 
+        boolean hasMeals = (c != null && c.getCount() > 0);
+
         TextView empty = root.findViewById(R.id.tvEmptyMeals);
-        if (empty != null) {
-            empty.setVisibility((c == null || c.getCount() == 0) ? View.VISIBLE : View.GONE);
-        }
+        View divider   = root.findViewById(R.id.viewDivider);     // if you added it earlier
+        View cardMeals = root.findViewById(R.id.cardMeals);       // NEW
+
+        if (empty != null)   empty.setVisibility(hasMeals ? View.GONE : View.VISIBLE);
+        if (divider != null) divider.setVisibility(hasMeals ? View.VISIBLE : View.GONE);
+        if (cardMeals != null) cardMeals.setVisibility(hasMeals ? View.VISIBLE : View.GONE);
     }
+
+
 
     private void loadTotals(View anchorRoot){
         Cursor c = db.getTotalsForDay(etDate.getText().toString());
-        if(c.moveToFirst()){
-            double cal=c.isNull(0)?0:c.getDouble(0),
-                    carbs=c.isNull(1)?0:c.getDouble(1),
-                    fat=c.isNull(2)?0:c.getDouble(2),
-                    prot=c.isNull(3)?0:c.getDouble(3);
-            Log.d(TAG, "totals cal=" + cal + " C=" + carbs + " F=" + fat + " P=" + prot);
+        if (c.moveToFirst()) {
+            double cal   = c.isNull(0) ? 0 : c.getDouble(0);
+            double carbs = c.isNull(1) ? 0 : c.getDouble(1);
+            double fat   = c.isNull(2) ? 0 : c.getDouble(2);
+            double prot  = c.isNull(3) ? 0 : c.getDouble(3);
+
             TextView tv = anchorRoot.findViewById(R.id.tvTotals);
             if (tv != null) {
-                tv.setText(String.format(Locale.US,
-                        "Total today: %.0f kcal | C %.1f | F %.1f | P %.1f",
-                        cal, carbs, fat, prot));
+                String text = String.format(
+                        Locale.US,
+                        "Total today\n%.0f kcal | P %.1f g | C %.1f g | F %.1f g",
+                        cal, prot, carbs, fat
+                );
+
+                SpannableStringBuilder sb = new SpannableStringBuilder(text);
+                int firstLineEnd = text.indexOf("\n");
+                if (firstLineEnd > 0) {
+                    sb.setSpan(new StyleSpan(Typeface.BOLD), 0, firstLineEnd,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    // second line intentionally left without a bold span
+                }
+
+                // Make the base style NORMAL so only the span is bold
+                tv.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+                tv.setText(sb, TextView.BufferType.SPANNABLE);
             }
         }
     }
 
-    // ---------- Adapters ----------
+
+
+
+    // ---------- Adapters (unchanged) ----------
 
     interface OnFoodPick { void onPick(long id, String name, double cal, double carbs, double fat, double prot); }
 
-    // Simple adapter used inside the picker dialog
     static class FoodsAdapterForDialog extends RecyclerView.Adapter<FoodsAdapterForDialog.VH>{
         private Cursor cursor; private final OnFoodPick cb; private static final String TAG = "FoodsPicker";
         FoodsAdapterForDialog(OnFoodPick cb){ this.cb=cb; }
