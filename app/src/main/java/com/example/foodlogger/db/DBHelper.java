@@ -9,7 +9,7 @@ import android.util.Log;
 
 public class DBHelper extends SQLiteOpenHelper {
     private static final String DB_NAME = "foodlogger.db";
-    private static final int DB_VER = 1;
+    private static final int DB_VER = 2;
     private static final String TAG = "DBHelper";
 
     public DBHelper(Context ctx) { super(ctx, DB_NAME, null, DB_VER); }
@@ -20,10 +20,37 @@ public class DBHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE meal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, entry_date TEXT NOT NULL, meal_type TEXT NOT NULL, food_id INTEGER NOT NULL, grams REAL NOT NULL, cal REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL, protein REAL NOT NULL, FOREIGN KEY(food_id) REFERENCES foods(id) ON DELETE CASCADE);");
     }
 
+    // Get single food item by id
+    public Cursor getFoodById(long id) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        return db.rawQuery("SELECT * FROM foods WHERE id=?", new String[]{String.valueOf(id)});
+    }
+    // Delete a food by ID
+    public int deleteFood(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        return db.delete("foods", "id=?", new String[]{String.valueOf(id)});
+    }
+
+
+    // Update food entry
+    public int updateFood(long id, String name, double cal, double carb, double fat, double prot) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("name", name);
+        cv.put("cal", cal);
+        cv.put("carbs", carb);
+        cv.put("fat", fat);
+        cv.put("protein", prot);
+        return db.update("foods", cv, "id=?", new String[]{String.valueOf(id)});
+    }
+
+
+
     @Override public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
         Log.w(TAG, "onUpgrade: " + oldV + " -> " + newV + ", dropping tables");
         db.execSQL("DROP TABLE IF EXISTS meal_entries");
         db.execSQL("DROP TABLE IF EXISTS foods");
+        onCreate(db);
         onCreate(db);
     }
 
@@ -33,9 +60,16 @@ public class DBHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         ContentValues cv = new ContentValues();
         cv.put("name", name.trim());
-        cv.put("cal", cal); cv.put("carbs", carbs); cv.put("fat", fat); cv.put("protein", protein);
+        cv.put("cal", cal);
+        cv.put("carbs", carbs);
+        cv.put("fat", fat);
+        cv.put("protein", protein);
         long rowId = db.insertWithOnConflict("foods", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-        Log.d(TAG, "insertFood: rowId=" + rowId);
+        if (rowId == -1) {
+            Log.e(TAG, "insertFood FAILED for: " + name);
+        } else {
+            Log.d(TAG, "insertFood SUCCESS id=" + rowId);
+        }
         return rowId;
     }
 
