@@ -108,18 +108,24 @@
                     </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
 
+                <!-- Activity Level Dropdown -->
                 <TextView
-                    android:text="Activity level"
+                    android:text="Activity Level"
+                    android:textStyle="bold"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"/>
 
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutActivity"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    app:endIconMode="dropdown_menu">
+
                     <AutoCompleteTextView
                         android:id="@+id/spActivity"
-                        android:hint="Choose…"
+                        android:hint="Choose activity level"
                         android:inputType="none"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"/>
