@@ -28,7 +28,8 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.foodlogger.R;
+import com.example.foodlogger.R;import android.text.TextUtils;
+import com.example.foodlogger.util.GoalPrefs;
 import com.example.foodlogger.db.DBHelper;
 
 import java.text.SimpleDateFormat;
@@ -44,6 +45,12 @@ public class LogMealFragment extends Fragment {
     private DBHelper db;
     private RecyclerView rvMeals;
     private EditText etDate, etSearch;
+    // Daily goals (adjust later or move to settings)
+    private static final double DAILY_KCAL_GOAL = 1800;
+    private static final double DAILY_PROT_GOAL = 130;
+    private static final double DAILY_CARB_GOAL = 160;
+    private static final double DAILY_FAT_GOAL  = 50;
+
     // 2x2 meal buttons
     private RadioButton rbBreakfast, rbLunch, rbSnack, rbDinner;
 
@@ -115,6 +122,12 @@ public class LogMealFragment extends Fragment {
         rbSnack.setOnCheckedChangeListener(listener);
         rbDinner.setOnCheckedChangeListener(listener);
     }
+    private CharSequence boldLine(String label, String content) {
+        SpannableStringBuilder sb = new SpannableStringBuilder(label + " " + content);
+        sb.setSpan(new StyleSpan(Typeface.BOLD), 0, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return sb;
+    }
+
 
     private void openFoodPickerDialog() {
         LinearLayout container = new LinearLayout(getContext());
@@ -224,6 +237,13 @@ public class LogMealFragment extends Fragment {
                 })
                 .setNegativeButton("Cancel", null).show();
     }
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (root != null) {
+            loadTotals(root);   // re-pulls values from GoalPrefs each time
+        }
+    }
 
     private void pickDate(){
         Calendar c = Calendar.getInstance();
@@ -258,9 +278,6 @@ public class LogMealFragment extends Fragment {
         if (divider != null) divider.setVisibility(hasMeals ? View.VISIBLE : View.GONE);
         if (cardMeals != null) cardMeals.setVisibility(hasMeals ? View.VISIBLE : View.GONE);
     }
-
-
-
     private void loadTotals(View anchorRoot){
         Cursor c = db.getTotalsForDay(etDate.getText().toString());
         if (c.moveToFirst()) {
@@ -269,28 +286,40 @@ public class LogMealFragment extends Fragment {
             double fat   = c.isNull(2) ? 0 : c.getDouble(2);
             double prot  = c.isNull(3) ? 0 : c.getDouble(3);
 
-            TextView tv = anchorRoot.findViewById(R.id.tvTotals);
-            if (tv != null) {
-                String text = String.format(
-                        Locale.US,
-                        "Total today\n%.0f kcal | P %.1f g | C %.1f g | F %.1f g",
-                        cal, prot, carbs, fat
-                );
+            // Read current goals from SharedPreferences (falls back to defaults)
+            double GOAL_KCAL = GoalPrefs.kcal(requireContext());
+            double GOAL_PROT = GoalPrefs.prot(requireContext());
+            double GOAL_CARB = GoalPrefs.carb(requireContext());
+            double GOAL_FAT  = GoalPrefs.fat (requireContext());
 
-                SpannableStringBuilder sb = new SpannableStringBuilder(text);
-                int firstLineEnd = text.indexOf("\n");
-                if (firstLineEnd > 0) {
-                    sb.setSpan(new StyleSpan(Typeface.BOLD), 0, firstLineEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    // second line intentionally left without a bold span
-                }
+            // 1) Running totals
+            TextView tvRun = anchorRoot.findViewById(R.id.tvRunningDetails);
+            if (tvRun != null) {
+                CharSequence line1 = boldLine("Calories:", String.format(Locale.US, "%.0f / %.0f kcal", cal, GOAL_KCAL));
+                CharSequence line2 = boldLine("Protein:",  String.format(Locale.US, "%.1f / %.0f g",   prot, GOAL_PROT));
+                CharSequence line3 = boldLine("Carbs:",    String.format(Locale.US, "%.1f / %.0f g",   carbs, GOAL_CARB));
+                CharSequence line4 = boldLine("Fat:",      String.format(Locale.US, "%.1f / %.0f g",   fat, GOAL_FAT));
+                tvRun.setText(android.text.TextUtils.concat(line1, "\n", line2, "\n", line3, "\n", line4));
+            }
 
-                // Make the base style NORMAL so only the span is bold
-                tv.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
-                tv.setText(sb, TextView.BufferType.SPANNABLE);
+            // 2) Remaining
+            TextView tvRem = anchorRoot.findViewById(R.id.tvRemainingDetails);
+            if (tvRem != null) {
+                double kcalLeft = GOAL_KCAL - cal;
+                double protLeft = GOAL_PROT - prot;
+                double carbLeft = GOAL_CARB - carbs;
+                double fatLeft  = GOAL_FAT  - fat;
+
+                CharSequence line1 = boldLine("Calories left:", String.format(Locale.US, "%.0f kcal", kcalLeft));
+                CharSequence line2 = boldLine("Protein left:",  String.format(Locale.US, "%.1f g",   protLeft));
+                CharSequence line3 = boldLine("Carbs left:",    String.format(Locale.US, "%.1f g",   carbLeft));
+                CharSequence line4 = boldLine("Fat left:",      String.format(Locale.US, "%.1f g",   fatLeft));
+                tvRem.setText(android.text.TextUtils.concat(line1, "\n", line2, "\n", line3, "\n", line4));
             }
         }
     }
+
+
 
 
 
