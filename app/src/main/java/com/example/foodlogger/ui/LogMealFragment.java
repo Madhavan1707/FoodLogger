@@ -355,11 +355,92 @@ public class LogMealFragment extends Fragment {
             // 1) Running totals
             TextView tvRun = anchorRoot.findViewById(R.id.tvRunningDetails);
             if (tvRun != null) {
-                CharSequence line1 = boldLine("Calories:", String.format(Locale.US, "%.0f / %.0f kcal", cal, GOAL_KCAL));
-                CharSequence line2 = boldLine("Protein:",  String.format(Locale.US, "%.1f / %.0f g",   prot, GOAL_PROT));
-                CharSequence line3 = boldLine("Carbs:",    String.format(Locale.US, "%.1f / %.0f g",   carbs, GOAL_CARB));
-                CharSequence line4 = boldLine("Fat:",      String.format(Locale.US, "%.1f / %.0f g",   fat, GOAL_FAT));
-                tvRun.setText(android.text.TextUtils.concat(line1, "\n", line2, "\n", line3, "\n", line4));
+                int NEUTRAL = 0xFF000000;
+                int GREEN   = 0xFF388E3C;  // under goal (good)
+                int ORANGE  = 0xFFFFB74D;  // mild over
+                int RED     = 0xFFE57373;  // strong over
+
+// Calories: under -> green; +10–200 -> orange; >200 -> red; 0–9 over -> neutral
+                double calDiff = cal - GOAL_KCAL;
+                int colorCal = (calDiff < 0) ? GREEN
+                        : (calDiff < 10) ? NEUTRAL
+                        : (calDiff <= 200) ? ORANGE
+                        : RED;
+
+// Protein: keep previous rule (met/over = green, else neutral)
+                // Protein: under -> red; equal or over -> green
+                int colorProt = (prot < GOAL_PROT) ? RED : GREEN;
+
+
+// Carbs: under -> green; +31–50g -> orange; >50g -> red; 0–30 over -> neutral
+                double carbDiff = carbs - GOAL_CARB;
+                int colorCarb = (carbDiff < 0) ? GREEN
+                        : (carbDiff <= 30) ? NEUTRAL
+                        : (carbDiff <= 50) ? ORANGE
+                        : RED;
+
+// Fat: under -> green; +31–50g -> orange; >50g -> red; 0–30 over -> neutral
+                double fatDiff = fat - GOAL_FAT;
+                int colorFat = (fatDiff < 0) ? GREEN
+                        : (fatDiff <= 30) ? NEUTRAL
+                        : (fatDiff <= 50) ? ORANGE
+                        : RED;
+
+
+                SpannableStringBuilder sb = new SpannableStringBuilder();
+
+                java.util.function.BiConsumer<String, Runnable> appendBoldLabel = (label, after) -> {
+                    int start = sb.length();
+                    sb.append(label).append(" ");
+                    sb.setSpan(new StyleSpan(Typeface.BOLD), start, start + label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    after.run();
+                    sb.append("\n");
+                };
+
+// Calories
+                appendBoldLabel.accept("Calories:", () -> {
+                    String left  = String.format(Locale.US, "%.0f", cal);
+                    String right = String.format(Locale.US, " / %.0f kcal", GOAL_KCAL);
+                    int s = sb.length();
+                    sb.append(left);
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(colorCal), s, s + left.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.append(right);
+                });
+
+// Protein
+                appendBoldLabel.accept("Protein:", () -> {
+                    String left  = String.format(Locale.US, "%.1f", prot);
+                    String right = String.format(Locale.US, " / %.0f g", GOAL_PROT);
+                    int s = sb.length();
+                    sb.append(left);
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(colorProt), s, s + left.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.append(right);
+                });
+
+// Carbs
+                appendBoldLabel.accept("Carbs:", () -> {
+                    String left  = String.format(Locale.US, "%.1f", carbs);
+                    String right = String.format(Locale.US, " / %.0f g", GOAL_CARB);
+                    int s = sb.length();
+                    sb.append(left);
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(colorCarb), s, s + left.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.append(right);
+                });
+
+// Fat
+                appendBoldLabel.accept("Fat:", () -> {
+                    String left  = String.format(Locale.US, "%.1f", fat);
+                    String right = String.format(Locale.US, " / %.0f g", GOAL_FAT);
+                    int s = sb.length();
+                    sb.append(left);
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(colorFat), s, s + left.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.append(right);
+                });
+
+                sb.delete(sb.length() - 1, sb.length()); // remove last \n
+                tvRun.setText(sb);
+
+
             }
 
             // 2) Remaining
