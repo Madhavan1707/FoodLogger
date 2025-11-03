@@ -32,10 +32,14 @@ import com.example.foodlogger.R;import android.text.TextUtils;
 import com.example.foodlogger.util.GoalPrefs;
 import com.example.foodlogger.db.DBHelper;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 import android.util.Log;
 
@@ -53,6 +57,14 @@ public class LogMealFragment extends Fragment {
 
     // 2x2 meal buttons
     private RadioButton rbBreakfast, rbLunch, rbSnack, rbDinner;
+    // NEW: weight UI containers + summary
+    private View cardWeightInput, cardWeightSummary;
+    private TextView tvWeightSummary;
+    private View btnEditWeight;
+
+    private EditText etWeightToday;
+    private View btnSaveWeight;
+    private View btnWeeklyTrend;
 
     private MealEntryAdapter mealAdapter;
     private final SimpleDateFormat fmt = new SimpleDateFormat("dd-MM-yyyy", Locale.US);
@@ -68,6 +80,27 @@ public class LogMealFragment extends Fragment {
         etDate = root.findViewById(R.id.etDate);
         etDate.setText(fmt.format(new Date()));
         etDate.setOnClickListener(vw -> pickDate());
+
+        // NEW: weight input + buttons
+        etWeightToday = root.findViewById(R.id.etWeightToday);
+        btnSaveWeight = root.findViewById(R.id.btnSaveWeight);
+        btnWeeklyTrend = root.findViewById(R.id.btnWeeklyTrend);
+        cardWeightInput   = root.findViewById(R.id.cardWeightInput);
+        cardWeightSummary = root.findViewById(R.id.cardWeightSummary);
+        tvWeightSummary   = root.findViewById(R.id.tvWeightSummary);
+        btnEditWeight     = root.findViewById(R.id.btnEditWeight);
+
+// Summary actions: tap Edit or the card itself to edit
+        btnEditWeight.setOnClickListener(v -> openEditWeightDialogForSelectedDate());
+        cardWeightSummary.setOnClickListener(v -> openEditWeightDialogForSelectedDate());
+
+
+        btnSaveWeight.setOnClickListener(v -> saveTodayWeight());
+        btnWeeklyTrend.setOnClickListener(v -> showWeeklyTrendDialogForSelectedSunday());
+
+        // Load weight for initial date & toggle weekly trend visibility
+        loadWeightFieldForDate(etDate.getText().toString());
+        updateWeeklyTrendVisibility(etDate.getText().toString());
 
         // find 2x2 radio buttons
         rbBreakfast = root.findViewById(R.id.rbBreakfast);
@@ -188,6 +221,235 @@ public class LogMealFragment extends Fragment {
         return sb;
     }
 
+    // ---------- Weight helpers (NEW) ----------
+    private void loadWeightFieldForDate(String dateStr) {
+        Cursor c = db.getWeightFor(dateStr);
+        Double w = null;
+        if (c != null && c.moveToFirst()) {
+            w = c.getDouble(0);
+        }
+        if (c != null) c.close();
+
+        if (w == null) {
+            // No weight saved → show input row, hide summary
+            etWeightToday.setText("");
+            cardWeightInput.setVisibility(View.VISIBLE);
+            cardWeightSummary.setVisibility(View.GONE);
+        } else {
+            // Weight exists → hide input, show summary
+            tvWeightSummary.setText(String.format(Locale.US, "Today’s Weight: %.1f kg", w));
+            cardWeightInput.setVisibility(View.GONE);
+            cardWeightSummary.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void saveTodayWeight() {
+        String s = etWeightToday.getText().toString().trim();
+        if (s.isEmpty()) {
+            Toast.makeText(getContext(), "Enter weight in kg", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            double w = Double.parseDouble(s);
+            if (w < 40 || w > 200) {
+                Toast.makeText(getContext(), "Weight must be between 40–200 kg", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String date = etDate.getText().toString();
+
+            // Read previous value (for potential undo)
+            Double prev = null;
+            Cursor c = db.getWeightFor(date);
+            if (c != null && c.moveToFirst()) prev = c.getDouble(0);
+            if (c != null) c.close();
+
+            final Double prevFinal = prev;
+            final String dateFinal = date;
+
+            db.upsertWeight(dateFinal, w);
+            Toast.makeText(getContext(), "Weight saved", Toast.LENGTH_SHORT).show();
+
+            // Refresh UI → hide input, show summary
+            loadWeightFieldForDate(date);
+
+            // (Optional but nice) Undo via Snackbar
+            try {
+                com.google.android.material.snackbar.Snackbar
+                        .make(root, "Weight saved", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                        .setAction("UNDO", v -> {
+                            if (prevFinal == null) {
+                                // remove the just-saved value
+                                getContext().getContentResolver(); // no-op just to keep code compile-safe if unused
+                                // quick delete via execSQL since we didn't expose deleteWeight; keeps footprint minimal:
+                                db.getWritableDatabase().execSQL("DELETE FROM weights WHERE entry_date=?", new Object[]{date});
+                            } else {
+                                db.upsertWeight(dateFinal, prevFinal);
+                            }
+                            loadWeightFieldForDate(dateFinal);
+                        })
+                        .show();
+            } catch (Exception ignore) { /* Snackbar not critical */ }
+
+        } catch (NumberFormatException e) {
+            Toast.makeText(getContext(), "Enter a valid number", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean isSunday(String dateStr) {
+        try {
+            Date d = fmt.parse(dateStr);
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(d);
+            return cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY;
+        } catch (ParseException e) {
+            return false;
+        }
+    }
+
+    private String[] monToSunDatesForSunday(String sundayStr) {
+        ArrayList<String> out = new ArrayList<>(7);
+        try {
+            Date sun = fmt.parse(sundayStr);
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(sun);
+            // Move back to Monday (Mon..Sun with Sunday provided)
+            for (int i = 6; i >= 0; i--) {
+                Calendar tmp = (Calendar) cal.clone();
+                tmp.add(Calendar.DAY_OF_MONTH, -i);
+                out.add(fmt.format(tmp.getTime()));
+            }
+        } catch (ParseException e) {
+            // fallback: return only sunday
+            out.add(sundayStr);
+        }
+        return out.toArray(new String[0]);
+    }
+
+    private void showWeeklyTrendDialogForSelectedSunday() {
+        String sunday = etDate.getText().toString();
+        String[] weekDates = monToSunDatesForSunday(sunday); // Mon..Sun based on selected Sunday
+
+        Cursor c = db.getWeightsForDates(weekDates);
+        Map<String, Double> map = new HashMap<>();
+        if (c != null) {
+            while (c.moveToNext()) {
+                String d = c.getString(0);
+                double w = c.getDouble(1);
+                map.put(d, w);
+            }
+            c.close();
+        }
+
+        // Find start (first available) and end (last available) in Mon..Sun order
+        Double start = null, end = null, sum = 0.0;
+        int count = 0;
+        for (String d : weekDates) {
+            if (map.containsKey(d)) {
+                double w = map.get(d);
+                if (start == null) start = w;
+                end = w;
+                sum += w;
+                count++;
+            }
+        }
+
+        // Build dialog UI
+        LinearLayout box = new LinearLayout(getContext());
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+
+        String title = String.format(Locale.US, "Weekly Trend (%s – %s)", weekDates[0], weekDates[6]);
+        TextView tvTitle = new TextView(getContext());
+        tvTitle.setText(title);
+        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        tvTitle.setTextSize(18);
+        box.addView(tvTitle);
+
+        TextView tvBody = new TextView(getContext());
+        StringBuilder sb = new StringBuilder();
+        if (count < 2) {
+            sb.append("Not enough data to show a trend.\nLogged days: ").append(count).append("/7");
+        } else {
+            double delta = end - start; // negative = loss
+            double avg = sum / count;
+            sb.append(String.format(Locale.US, "Start → End: %.1f → %.1f kg\n", start, end));
+            sb.append(String.format(Locale.US, "Δ This week: %.1f kg\n", delta));
+            sb.append(String.format(Locale.US, "Average: %.1f kg\n", avg));
+            sb.append(String.format(Locale.US, "Entries: %d/7", count));
+        }
+        tvBody.setText(sb.toString());
+        tvBody.setTextSize(16);
+        tvBody.setPadding(0, (int)(8 * getResources().getDisplayMetrics().density), 0, 0);
+        box.addView(tvBody);
+
+        new android.app.AlertDialog.Builder(getContext())
+                .setTitle("Weekly Trend")
+                .setView(box)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+        private void updateWeeklyTrendVisibility(String selectedDate) {
+        btnWeeklyTrend.setVisibility(isSunday(selectedDate) ? View.VISIBLE : View.GONE);
+    }
+
+    private void openEditWeightDialogForSelectedDate() {
+        final String date = etDate.getText().toString();
+
+        Double current = null;
+        Cursor c = db.getWeightFor(date);
+        if (c != null && c.moveToFirst()) current = c.getDouble(0);
+        if (c != null) c.close();
+
+        if (current == null) {
+            // If somehow no weight, just reveal input
+            cardWeightInput.setVisibility(View.VISIBLE);
+            cardWeightSummary.setVisibility(View.GONE);
+            return;
+        }
+
+        LinearLayout box = new LinearLayout(getContext());
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+
+        TextView hint = new TextView(getContext());
+        hint.setText("Edit weight (kg)");
+        box.addView(hint);
+
+        final EditText input = new EditText(getContext());
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setText(String.format(Locale.US, "%.1f", current));
+        box.addView(input);
+
+        new android.app.AlertDialog.Builder(getContext())
+                .setTitle("Edit weight")
+                .setView(box)
+                .setPositiveButton("Save", (d,wBtn)->{
+                    String s = input.getText().toString().trim();
+                    try {
+                        double nw = Double.parseDouble(s);
+                        if (nw < 40 || nw > 200) {
+                            Toast.makeText(getContext(), "Weight must be between 40–200 kg", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        db.upsertWeight(date, nw);
+                        loadWeightFieldForDate(date);
+                    } catch (NumberFormatException ex) {
+                        Toast.makeText(getContext(), "Enter a valid number", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNeutralButton("Delete", (d,wBtn)->{
+                    db.getWritableDatabase().execSQL("DELETE FROM weights WHERE entry_date=?", new Object[]{date});
+                    // After delete → show input row again
+                    loadWeightFieldForDate(date);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+
 
     private void openFoodPickerDialog() {
         LinearLayout container = new LinearLayout(getContext());
@@ -302,6 +564,8 @@ public class LogMealFragment extends Fragment {
         super.onResume();
         if (root != null) {
             loadTotals(root);   // re-pulls values from GoalPrefs each time
+            loadWeightFieldForDate(etDate.getText().toString());
+            updateWeeklyTrendVisibility(etDate.getText().toString());
         }
     }
 
@@ -313,6 +577,8 @@ public class LogMealFragment extends Fragment {
             Log.d(TAG, "date chosen=" + etDate.getText());
             loadMeals();
             loadTotals(root);
+            loadWeightFieldForDate(etDate.getText().toString());
+            updateWeeklyTrendVisibility(etDate.getText().toString());
         }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show();
     }
 

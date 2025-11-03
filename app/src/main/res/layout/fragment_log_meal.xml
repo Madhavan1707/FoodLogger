@@ -27,7 +27,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <EditText
+                 <EditText
                     android:id="@+id/etDate"
                     android:focusable="false"
                     android:clickable="true"
@@ -93,6 +93,87 @@
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <!-- NEW: Today's Weight row -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardWeightInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:orientation="horizontal"
+                android:padding="12dp"
+                android:gravity="center_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Today's Weight (kg)">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etWeightToday"
+                        android:inputType="numberDecimal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"/>
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSaveWeight"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Save"
+                    android:layout_marginStart="12dp"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- NEW: compact summary shown only when weight exists for the selected date -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardWeightSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:orientation="horizontal"
+                android:padding="12dp"
+                android:gravity="center_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <TextView
+                    android:id="@+id/tvWeightSummary"
+                    android:text="Today’s Weight: — kg"
+                    android:textSize="16sp"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditWeight"
+                    android:text="Edit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+
+        <!-- NEW: Sunday-only Weekly Trend button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnWeeklyTrend"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Weekly Trend"
+            android:visibility="gone"
+            app:cornerRadius="12dp"
+            android:layout_marginBottom="12dp"/>
 
         <!-- SEARCH BAR (outside card; tap → opens picker dialog) -->
         <com.google.android.material.textfield.TextInputLayout

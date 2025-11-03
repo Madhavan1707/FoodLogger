@@ -9,7 +9,7 @@ import android.util.Log;
 
 public class DBHelper extends SQLiteOpenHelper {
     private static final String DB_NAME = "foodlogger.db";
-    private static final int DB_VER = 1;
+    private static final int DB_VER = 2;
     private static final String TAG = "DBHelper";
 
     public DBHelper(Context ctx) { super(ctx, DB_NAME, null, DB_VER); }
@@ -19,14 +19,22 @@ public class DBHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE foods (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, cal REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL, protein REAL NOT NULL);");
         db.execSQL("CREATE TABLE meal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, entry_date TEXT NOT NULL, meal_type TEXT NOT NULL, food_id INTEGER NOT NULL, grams REAL NOT NULL, cal REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL, protein REAL NOT NULL, FOREIGN KEY(food_id) REFERENCES foods(id) ON DELETE CASCADE);");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_foods_name ON foods(name);");
+        // NEW: weights table (one row per date)
+        db.execSQL("CREATE TABLE IF NOT EXISTS weights (" +
+                "entry_date TEXT PRIMARY KEY," +
+                "weight REAL NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_weights_date ON weights(entry_date)");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
-        Log.w(TAG, "onUpgrade: " + oldV + " -> " + newV + ", dropping tables");
-        db.execSQL("DROP TABLE IF EXISTS meal_entries");
-        db.execSQL("DROP TABLE IF EXISTS foods");
-        db.execSQL("CREATE INDEX IF NOT EXISTS idx_foods_name ON foods(name);");
-        onCreate(db);
+        Log.w(TAG, "onUpgrade: " + oldV + " -> " + newV);
+        // Gentle migration: only add new artifacts for newer versions.
+        if (oldV < 2) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS weights (" +
+                    "entry_date TEXT PRIMARY KEY," +
+                    "weight REAL NOT NULL)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_weights_date ON weights(entry_date)");
+        }
     }
 
     public int updateMealValues(long mealId, double grams, double cal, double carbs, double fat, double protein){
@@ -121,4 +129,33 @@ public class DBHelper extends SQLiteOpenHelper {
     }
 
     private static double round2(double v){ return Math.round(v * 100.0)/100.0; }
+
+    // ---------- Weights (NEW) ----------
+    public long upsertWeight(String date, double weightKg) {
+        ContentValues cv = new ContentValues();
+        cv.put("entry_date", date);
+        cv.put("weight", weightKg);
+        long rowId = getWritableDatabase().insertWithOnConflict("weights", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+        Log.d(TAG, "upsertWeight: date=" + date + " weight=" + weightKg + " rowId=" + rowId);
+        return rowId;
+    }
+
+    public Cursor getWeightFor(String date) {
+        return getReadableDatabase().rawQuery(
+                "SELECT weight FROM weights WHERE entry_date=?",
+                new String[]{date}
+        );
+    }
+
+    public Cursor getWeightsForDates(String[] dates) {
+        if (dates == null || dates.length == 0) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("SELECT entry_date, weight FROM weights WHERE entry_date IN (");
+        for (int i = 0; i < dates.length; i++) {
+            if (i > 0) sb.append(",");
+            sb.append("?");
+        }
+        sb.append(")");
+        return getReadableDatabase().rawQuery(sb.toString(), dates);
+    }
 }
