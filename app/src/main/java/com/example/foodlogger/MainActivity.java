@@ -1,5 +1,4 @@
 package com.example.foodlogger;
-
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -20,10 +19,8 @@ import android.os.Build;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-
-
-
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity
+        implements com.example.foodlogger.ui.GoalsFragment.OnGoalsSavedListener {
     private static final String TAG = "MainActivity";
     private static final String EXTRA_OPEN_TAB = "open_tab";
     private static final int REQ_POST_NOTIF = 42;
@@ -81,8 +78,24 @@ public class MainActivity extends AppCompatActivity {
             else tab.setText("Goals");
         }).attach();
 
+        // Choose initial tab: if goals not set, open Goals (index 2); else Log Meal (index 0)
+        int initialIndex = com.example.foodlogger.util.GoalPrefs.isSetupComplete(this) ? 0 : 2;
+        pager.setCurrentItem(initialIndex, false);
+
+// Finally, allow an incoming intent (e.g., from notification) to override the tab
         handleOpenTabIntent(getIntent());
+
     }
+
+    @Override
+    public void onGoalsSaved() {
+        ViewPager2 pager = findViewById(R.id.pager);
+        if (pager != null) {
+            // Jump to Log Meal after a successful first-time setup (or any save)
+            pager.setCurrentItem(0, true); // adjust index if your order differs
+        }
+    }
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {

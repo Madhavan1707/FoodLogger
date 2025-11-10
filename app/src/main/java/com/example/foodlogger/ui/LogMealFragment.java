@@ -76,6 +76,7 @@ public class LogMealFragment extends Fragment {
         root = inf.inflate(R.layout.fragment_log_meal, container, false);
 
         db = new DBHelper(requireContext());
+        db.ensureQuickAddFood();
 
         etDate = root.findViewById(R.id.etDate);
         etDate.setText(fmt.format(new Date()));
@@ -457,6 +458,51 @@ public class LogMealFragment extends Fragment {
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
         container.setPadding(pad, pad, pad, pad);
 
+        // Quick Add kcal button
+        android.widget.Button btnQuickKcal = new android.widget.Button(getContext());
+        btnQuickKcal.setText("Quick add kcal");
+        container.addView(btnQuickKcal);
+
+// Handler: prompt for kcal and insert a kcal-only entry
+        btnQuickKcal.setOnClickListener(v -> {
+            // prompt
+            android.widget.EditText input = new android.widget.EditText(getContext());
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            input.setHint("Enter kcal (e.g., 250)");
+
+            new android.app.AlertDialog.Builder(getContext())
+                    .setTitle("Quick Add (kcal)")
+                    .setView(input)
+                    .setPositiveButton("Add", (d, w) -> {
+                        String s = input.getText().toString().trim();
+                        if (s.isEmpty()) {
+                            android.widget.Toast.makeText(getContext(), "Enter kcal", android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        try {
+                            double kcal = Double.parseDouble(s);
+                            if (kcal <= 0) {
+                                android.widget.Toast.makeText(getContext(), "Kcal must be > 0", android.widget.Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            long quickId = db.ensureQuickAddFood();
+                            // grams = kcal (since per-100g = 100 kcal → grams/100*100 = grams)
+                            String date = etDate.getText().toString();
+                            String mealType = currentMealType();
+                            db.insertMeal(date, mealType, quickId, kcal,
+                                    /*per100*/ 100.0, 0.0, 0.0, 0.0);
+
+                            loadMeals();
+                            loadTotals(root);
+                        } catch (NumberFormatException ex) {
+                            android.widget.Toast.makeText(getContext(), "Enter a valid number", android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+
+
         EditText etQuery = new EditText(getContext());
         etQuery.setHint("Search food…");
         etQuery.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
@@ -470,15 +516,18 @@ public class LogMealFragment extends Fragment {
             showAddGramsDialog(foodId, name, cal, carbs, fat, prot);
         });
         rv.setAdapter(adapter);
-        adapter.submitCursor(db.getAllFoods());
+        adapter.submitCursor(db.getAllFoodsNoQuickAdd());
 
         etQuery.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override public void afterTextChanged(Editable s) {
                 String q = s == null ? "" : s.toString();
-                Cursor c = q.trim().isEmpty() ? db.getAllFoods() : db.getFoodsFiltered(q);
+                Cursor c = q.trim().isEmpty()
+                        ? db.getAllFoodsNoQuickAdd()
+                        : db.getFoodsFilteredNoQuickAdd(q);
                 adapter.submitCursor(c);
+
             }
         });
 
@@ -779,8 +828,14 @@ public class LogMealFragment extends Fragment {
             double grams = cursor.getDouble(1), cal = cursor.getDouble(2),
                     carbs = cursor.getDouble(3), fat = cursor.getDouble(4), prot = cursor.getDouble(5);
             String name = cursor.getString(6);
+// TOP LINE: show kcal for Quick Add; grams for normal foods
+            if (name != null && name.startsWith("Quick Add (kcal)")) {
+                h.top.setText(String.format(java.util.Locale.US, "Quick Add — %.0f kcal", grams));
+            } else {
+                h.top.setText(String.format(java.util.Locale.US, "%s — %.0fg", name, grams));
+            }
 
-            h.top.setText(String.format(Locale.US, "%s — %.0fg", name, grams));
+//            h.top.setText(String.format(Locale.US, "%s — %.0fg", name, grams));
             h.bottom.setText(String.format(Locale.US, "%.0f kcal | C %.1f | F %.1f | P %.1f", cal, carbs, fat, prot));
 
             h.itemView.setOnClickListener(v -> {

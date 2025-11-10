@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
+import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.Toast;
 
@@ -32,6 +33,12 @@ public class GoalsFragment extends Fragment {
     private AutoCompleteTextView spActivity;
 
     private TextInputEditText etKcal, etProt, etCarb, etFat;
+    public interface OnGoalsSavedListener {
+        void onGoalsSaved();
+    }
+
+    private OnGoalsSavedListener goalsSavedListener;
+
 
     private final Map<String, Double> activityMap = new HashMap<>();
 
@@ -86,13 +93,38 @@ public class GoalsFragment extends Fragment {
 
         MaterialButton btnSave = v.findViewById(R.id.btnSave);
         btnSave.setOnClickListener(view -> {
-            float kcal = parseFloat(etKcal, GoalPrefs.DEF_KCAL);
-            float prot = parseFloat(etProt, GoalPrefs.DEF_PROT);
-            float carb = parseFloat(etCarb, GoalPrefs.DEF_CARB);
-            float fat = parseFloat(etFat, GoalPrefs.DEF_FAT);
+//            float kcal = parseFloat(etKcal, 0f);
+//            float prot = parseFloat(etProt, 0f);
+//            float carb = parseFloat(etCarb, 0f);
+//            float fat  = parseFloat(etFat,  0f);
+            Float kcalF = readFloat(etKcal);
+            Float protF = readFloat(etProt);
+            Float carbF = readFloat(etCarb);
+            Float fatF  = readFloat(etFat);
+            // Clear old errors
+            etKcal.setError(null);
+            etProt.setError(null);
+            etCarb.setError(null);
+            etFat.setError(null);
 
-            GoalPrefs.save(requireContext(), kcal, prot, carb, fat);
+            boolean ok = true;
+            // Validate: required and > 0
+            if (kcalF == null || kcalF <= 0f) { etKcal.setError("Enter kcal > 0"); ok = false; }
+            if (protF == null || protF <= 0f) { etProt.setError("Enter protein > 0"); ok = false; }
+            if (carbF == null || carbF <= 0f) { etCarb.setError("Enter carbs > 0"); ok = false; }
+            if (fatF  == null || fatF  <= 0f) { etFat.setError("Enter fat > 0"); ok = false; }
+
+            if (!ok) {
+                android.widget.Toast.makeText(requireContext(), "Please fix the highlighted fields", android.widget.Toast.LENGTH_SHORT).show();
+                return; // IMPORTANT: do not proceed or switch tabs
+            }
+
+            GoalPrefs.save(requireContext(), kcalF, protF, carbF, fatF);
             Toast.makeText(getContext(), "Goals saved successfully!", Toast.LENGTH_SHORT).show();
+            if (goalsSavedListener != null) {
+                goalsSavedListener.onGoalsSaved();
+            }
+
 
             etKcal.setText("");
             etProt.setText("");
@@ -110,6 +142,30 @@ public class GoalsFragment extends Fragment {
 
         return v;
     }
+
+    @Override
+    public void onAttach(@NonNull android.content.Context context) {
+        super.onAttach(context);
+        if (context instanceof OnGoalsSavedListener) {
+            goalsSavedListener = (OnGoalsSavedListener) context;
+        }
+    }
+
+    // NEW: returns null if empty or invalid
+    @Nullable
+    private Float readFloat(EditText et) {
+        String s = et.getText() == null ? "" : et.getText().toString().trim();
+        if (s.isEmpty()) return null;
+        try { return Float.parseFloat(s); } catch (NumberFormatException e) { return null; }
+    }
+
+
+    @Override
+    public void onDetach() {
+        super.onDetach();
+        goalsSavedListener = null;
+    }
+
 
     private void doCalculate() {
         if (TextUtils.isEmpty(etAge.getText()) || TextUtils.isEmpty(etHeight.getText()) || TextUtils.isEmpty(etWeight.getText())) {

@@ -9,6 +9,9 @@ import android.util.Log;
 
 public class DBHelper extends SQLiteOpenHelper {
     private static final String DB_NAME = "foodlogger.db";
+    // Add near the top, with your other constants (optional)
+    private static final String QUICK_ADD_NAME = "Quick Add (kcal)";
+
     private static final int DB_VER = 2;
     private static final String TAG = "DBHelper";
 
@@ -146,6 +149,52 @@ public class DBHelper extends SQLiteOpenHelper {
                 new String[]{date}
         );
     }
+
+    // ADD: list all foods EXCEPT Quick Add
+    public Cursor getAllFoodsNoQuickAdd() {
+        SQLiteDatabase db = getReadableDatabase();
+        return db.rawQuery(
+                "SELECT rowid AS _id, name, cal, carbs, fat, protein " +
+                        "FROM foods " +
+                        "WHERE name <> ? " +
+                        "ORDER BY name COLLATE NOCASE ASC",
+                new String[]{ QUICK_ADD_NAME }
+        );
+    }
+
+    // ADD: filter foods EXCEPT Quick Add
+    public Cursor getFoodsFilteredNoQuickAdd(String q) {
+        SQLiteDatabase db = getReadableDatabase();
+        return db.rawQuery(
+                "SELECT rowid AS _id, name, cal, carbs, fat, protein " +
+                        "FROM foods " +
+                        "WHERE name <> ? AND name LIKE ? COLLATE NOCASE " +
+                        "ORDER BY name COLLATE NOCASE ASC",
+                new String[]{ QUICK_ADD_NAME, "%" + q + "%" }
+        );
+    }
+
+
+
+    // --- Quick Add (kcal) support ---
+    public long ensureQuickAddFood() {
+        // name: unique; per-100g: 100 kcal, 0/0/0 macros
+        long id = getFoodIdByName("Quick Add (kcal)");
+        if (id != -1) return id;
+        return insertFood("Quick Add (kcal)", 100.0, 0.0, 0.0, 0.0);
+    }
+
+    public long getFoodIdByName(String name) {
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT id FROM foods WHERE name = ? LIMIT 1", new String[]{name});
+        try {
+            if (c.moveToFirst()) return c.getLong(0);
+            return -1;
+        } finally {
+            c.close();
+        }
+    }
+
 
     public Cursor getWeightsForDates(String[] dates) {
         if (dates == null || dates.length == 0) return null;

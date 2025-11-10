@@ -103,7 +103,7 @@ public class LogFoodFragment extends Fragment {
 
 
     private void load(){
-        Cursor c = db.getAllFoods();
+        Cursor c = db.getAllFoodsNoQuickAdd();
         Log.d(TAG, "load foods count=" + (c==null?0:c.getCount()));
         adapter.submitCursor(c);
     }
