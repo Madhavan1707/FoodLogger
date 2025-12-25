@@ -855,4 +855,152 @@ public class LogMealFragment extends Fragment {
             VH(View v){ super(v); top=v.findViewById(R.id.tvTop); bottom=v.findViewById(R.id.tvBottom); del=v.findViewById(R.id.btnDelete); }
         }
     }
+    public void shareSummaryFromMenu() {
+        try {
+            // Use a fresh DBHelper for sharing to avoid stale reads
+            DBHelper freshDb = new DBHelper(requireContext());
+
+            String text = buildShareText(freshDb); // <-- pass fresh db
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_SEND);
+            i.setType("text/plain");
+            i.putExtra(android.content.Intent.EXTRA_SUBJECT, "FoodLogger Summary");
+            i.putExtra(android.content.Intent.EXTRA_TEXT, text);
+            startActivity(android.content.Intent.createChooser(i, "Share summary via"));
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "shareSummaryFromMenu failed", e);
+            android.widget.Toast.makeText(getContext(), "Unable to share summary", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String buildShareText(DBHelper shareDb) {
+        Calendar cal = Calendar.getInstance();
+        String todayStr = fmt.format(cal.getTime());
+        cal.add(Calendar.DAY_OF_MONTH, -1);
+        String ydayStr = fmt.format(cal.getTime());
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("You are my nutrition coach.\n")
+                .append("Compare yesterday vs today, then give insights for TODAY only:\n")
+                .append("• What went right\n")
+                .append("• What went wrong\n")
+                .append("• What can be improved tomorrow\n")
+                .append("Keep it short, practical, and specific.\n\n");
+
+        sb.append(buildDaySection(shareDb, "YESTERDAY", ydayStr)).append("\n\n");
+        sb.append(buildDaySection(shareDb, "TODAY", todayStr));
+
+        return sb.toString();
+    }
+
+
+    private String buildDaySection(DBHelper shareDb, String title, String dateStr) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(title).append(" (").append(dateStr).append(")\n");
+
+        Double w = getWeightOrNull(shareDb, dateStr);
+        if (w == null) sb.append("Weight: Not logged\n");
+        else sb.append(String.format(Locale.US, "Weight: %.1f kg\n", w));
+
+        Totals t = getTotals(shareDb, dateStr);
+        if (t == null || t.isAllZero()) {
+            sb.append("Totals: Not logged\n");
+        } else {
+            sb.append(String.format(Locale.US,
+                    "Totals: %.0f kcal | P %.1fg | C %.1fg | F %.1fg\n",
+                    t.cal, t.prot, t.carbs, t.fat));
+        }
+
+        sb.append("\nMeals:\n");
+        sb.append(buildMealBlock(shareDb, dateStr, "Breakfast"));
+        sb.append(buildMealBlock(shareDb, dateStr, "Lunch"));
+        sb.append(buildMealBlock(shareDb, dateStr, "Snack"));
+        sb.append(buildMealBlock(shareDb, dateStr, "Dinner"));
+
+        return sb.toString();
+    }
+
+
+    private String buildMealBlock(DBHelper shareDb, String dateStr, String mealType) {
+        Cursor c = null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("• ").append(mealType).append(":\n");
+
+        try {
+            c = shareDb.getMealsFor(dateStr, mealType);
+            if (c == null || c.getCount() == 0) {
+                sb.append("  - Not logged\n");
+                return sb.toString();
+            }
+
+            while (c.moveToNext()) {
+                double grams = c.getDouble(1);
+                double cal = c.getDouble(2);
+                double carbs = c.getDouble(3);
+                double fat = c.getDouble(4);
+                double prot = c.getDouble(5);
+                String name = c.getString(6);
+
+                if (name != null && name.startsWith("Quick Add (kcal)")) {
+                    sb.append(String.format(Locale.US, "  - Quick Add: %.0f kcal\n", grams));
+                } else {
+                    sb.append(String.format(Locale.US,
+                            "  - %s: %.0fg | %.0f kcal | P %.1f C %.1f F %.1f\n",
+                            safe(name), grams, cal, prot, carbs, fat));
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "buildMealBlock failed for " + mealType, e);
+            sb.append("  - (Error reading meal)\n");
+        } finally {
+            if (c != null) c.close();
+        }
+
+        return sb.toString();
+    }
+
+
+    private String safe(String s) {
+        return (s == null || s.trim().isEmpty()) ? "Unnamed" : s.trim();
+    }
+
+    private Double getWeightOrNull(DBHelper shareDb, String dateStr) {
+        Cursor c = null;
+        try {
+            c = shareDb.getWeightFor(dateStr);
+            if (c != null && c.moveToFirst()) return c.getDouble(0);
+            return null;
+        } finally {
+            if (c != null) c.close();
+        }
+    }
+
+
+    private Totals getTotals(DBHelper shareDb, String dateStr) {
+        Cursor c = null;
+        try {
+            c = shareDb.getTotalsForDay(dateStr);
+            if (c != null && c.moveToFirst()) {
+                Totals t = new Totals();
+                t.cal   = c.isNull(0) ? 0 : c.getDouble(0);
+                t.carbs = c.isNull(1) ? 0 : c.getDouble(1);
+                t.fat   = c.isNull(2) ? 0 : c.getDouble(2);
+                t.prot  = c.isNull(3) ? 0 : c.getDouble(3);
+                return t;
+            }
+            return null;
+        } finally {
+            if (c != null) c.close();
+        }
+    }
+
+
+    static class Totals {
+        double cal, carbs, fat, prot;
+        boolean isAllZero() {
+            return cal == 0 && carbs == 0 && fat == 0 && prot == 0;
+        }
+    }
+
+
 }

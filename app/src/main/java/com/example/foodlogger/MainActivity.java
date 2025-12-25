@@ -17,7 +17,12 @@ import com.google.android.material.tabs.TabLayoutMediator;  import android.Manif
 import android.content.pm.PackageManager;
 import android.os.Build;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
+import androidx.core.content.ContextCompat;import android.view.Menu;
+import android.view.MenuItem;
+import android.widget.Toast;
+
+import com.google.android.material.appbar.MaterialToolbar;
+
 
 public class MainActivity extends AppCompatActivity
         implements com.example.foodlogger.ui.GoalsFragment.OnGoalsSavedListener {
@@ -33,6 +38,8 @@ public class MainActivity extends AppCompatActivity
         Log.d(TAG, "onCreate");
 
         setContentView(R.layout.activity_main);
+        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
         if (Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
@@ -126,5 +133,35 @@ public class MainActivity extends AppCompatActivity
             // If you use a different nav system, navigate to Log Meal accordingly.
         }
     }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_share_summary) {
+            // Delegate to current fragment in ViewPager2
+            ViewPager2 pager = findViewById(R.id.pager);
+            int pos = pager.getCurrentItem();
+
+            if (pos == 0) { // Log Meal tab index (yours is 0)
+                // Find the fragment created by ViewPager2
+                Fragment f = getSupportFragmentManager().findFragmentByTag("f" + pos);
+                if (f instanceof com.example.foodlogger.ui.LogMealFragment) {
+                    ((com.example.foodlogger.ui.LogMealFragment) f).shareSummaryFromMenu();
+                } else {
+                    Toast.makeText(this, "Open Log Meal to share summary", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, "Open Log Meal to share summary", Toast.LENGTH_SHORT).show();
+            }
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
 
 }
