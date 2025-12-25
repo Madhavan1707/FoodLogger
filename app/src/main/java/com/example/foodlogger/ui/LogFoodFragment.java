@@ -63,11 +63,19 @@ public class LogFoodFragment extends Fragment {
                 double vProt = Double.parseDouble(prot.getText().toString());
                 String rawName = name.getText().toString();
                 String titleName = toTitleCase(rawName);
-// keep validation as-is, then:
-                long id = db.insertFood(titleName, vCal, vCarbs, vFat, vProt);
-                Log.d(TAG, "Food inserted id=" + id);
+                long existingId = db.findFoodIdByName(titleName);
+                if (existingId > 0) {
+                    db.updateFoodAndRecalc(existingId, titleName, vCal, vCarbs, vFat, vProt);
+                    Log.d(TAG, "Food updated id=" + existingId + " (in-place + meals recalculated)");
+                    Toast.makeText(getContext(), "Updated existing food & recalculated logged meals", Toast.LENGTH_SHORT).show();
+                } else {
+                    long id = db.insertFood(titleName, vCal, vCarbs, vFat, vProt);
+                    Log.d(TAG, "Food inserted id=" + id);
+                    Toast.makeText(getContext(), "Food added", Toast.LENGTH_SHORT).show();
+                }
                 name.setText(""); cal.setText(""); carbs.setText(""); fat.setText(""); prot.setText("");
                 load();
+
             } catch (NumberFormatException e){
                 Log.e(TAG, "Parsing error", e);
                 Toast.makeText(getContext(), "Enter valid numbers for calories/carbs/fat/protein", Toast.LENGTH_SHORT).show();
@@ -97,11 +105,6 @@ public class LogFoodFragment extends Fragment {
         }
         return out.toString();
     }
-
-
-
-
-
     private void load(){
         Cursor c = db.getAllFoodsNoQuickAdd();
         Log.d(TAG, "load foods count=" + (c==null?0:c.getCount()));

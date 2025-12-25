@@ -141,58 +141,58 @@ public class LogMealFragment extends Fragment {
 
         return root;
     }
-    private void showEditMealDialog(long mealId, double oldGrams, double oldCal, double oldCarbs, double oldFat, double oldProt, String name){
-        LinearLayout box = new LinearLayout(getContext());
-        box.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (16 * getResources().getDisplayMetrics().density);
-        box.setPadding(pad, pad, pad, pad);
+        private void showEditMealDialog(long mealId, double oldGrams, double oldCal, double oldCarbs, double oldFat, double oldProt, String name){
+            LinearLayout box = new LinearLayout(getContext());
+            box.setOrientation(LinearLayout.VERTICAL);
+            int pad = (int) (16 * getResources().getDisplayMetrics().density);
+            box.setPadding(pad, pad, pad, pad);
 
-        TextView hint = new TextView(getContext());
-        hint.setText("Edit amount (grams). Macros will adjust automatically.");
-        box.addView(hint);
+            TextView hint = new TextView(getContext());
+            hint.setText("Edit amount (grams). Macros will adjust automatically.");
+            box.addView(hint);
 
-        final EditText input = new EditText(getContext());
-        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        input.setHint("grams");
-        input.setText(String.format(Locale.US, "%.0f", oldGrams));
-        box.addView(input);
+            final EditText input = new EditText(getContext());
+            input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            input.setHint("grams");
+            input.setText(String.format(Locale.US, "%.0f", oldGrams));
+            box.addView(input);
 
-        new android.app.AlertDialog.Builder(getContext())
-                .setTitle("Edit " + name)
-                .setView(box)
-                .setPositiveButton("Save", (d,w) -> {
-                    String s = input.getText().toString().trim();
-                    if (s.isEmpty()) {
-                        Toast.makeText(getContext(), "Please enter grams", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    try {
-                        double newGrams = Double.parseDouble(s);
-                        if (newGrams <= 0) {
-                            Toast.makeText(getContext(), "Amount must be > 0", Toast.LENGTH_SHORT).show();
+            new android.app.AlertDialog.Builder(getContext())
+                    .setTitle("Edit " + name)
+                    .setView(box)
+                    .setPositiveButton("Save", (d,w) -> {
+                        String s = input.getText().toString().trim();
+                        if (s.isEmpty()) {
+                            Toast.makeText(getContext(), "Please enter grams", Toast.LENGTH_SHORT).show();
                             return;
                         }
-                        // Scale macros linearly by grams change
-                        double factor = newGrams / oldGrams;
-                        double newCal   = Math.round(oldCal   * factor);
-                        double newCarbs = Math.round(oldCarbs * factor * 10.0) / 10.0;
-                        double newFat   = Math.round(oldFat   * factor * 10.0) / 10.0;
-                        double newProt  = Math.round(oldProt  * factor * 10.0) / 10.0;
+                        try {
+                            double newGrams = Double.parseDouble(s);
+                            if (newGrams <= 0) {
+                                Toast.makeText(getContext(), "Amount must be > 0", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            // Scale macros linearly by grams change
+                            double factor = newGrams / oldGrams;
+                            double newCal   = Math.round(oldCal   * factor);
+                            double newCarbs = Math.round(oldCarbs * factor * 10.0) / 10.0;
+                            double newFat   = Math.round(oldFat   * factor * 10.0) / 10.0;
+                            double newProt  = Math.round(oldProt  * factor * 10.0) / 10.0;
 
-                        int rows = db.updateMealValues(mealId, newGrams, newCal, newCarbs, newFat, newProt);
-                        Log.d(TAG, "updateMealValues rows=" + rows);
+                            int rows = db.updateMealValues(mealId, newGrams, newCal, newCarbs, newFat, newProt);
+                            Log.d(TAG, "updateMealValues rows=" + rows);
 
-                        loadMeals();
-                        loadTotals(root);
-                        Toast.makeText(getContext(), "Updated", Toast.LENGTH_SHORT).show();
-                    } catch (NumberFormatException ex){
-                        Log.e(TAG, "edit grams parse error", ex);
-                        Toast.makeText(getContext(), "Enter a valid number", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
+                            loadMeals();
+                            loadTotals(root);
+                            Toast.makeText(getContext(), "Updated", Toast.LENGTH_SHORT).show();
+                        } catch (NumberFormatException ex){
+                            Log.e(TAG, "edit grams parse error", ex);
+                            Toast.makeText(getContext(), "Enter a valid number", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        }
 
 
 
@@ -612,6 +612,7 @@ public class LogMealFragment extends Fragment {
     public void onResume() {
         super.onResume();
         if (root != null) {
+            loadMeals();
             loadTotals(root);   // re-pulls values from GoalPrefs each time
             loadWeightFieldForDate(etDate.getText().toString());
             updateWeeklyTrendVisibility(etDate.getText().toString());

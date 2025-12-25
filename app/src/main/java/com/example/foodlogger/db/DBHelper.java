@@ -40,18 +40,13 @@ public class DBHelper extends SQLiteOpenHelper {
         }
     }
 
-    public int updateMealValues(long mealId, double grams, double cal, double carbs, double fat, double protein){
+    public int updateMealValues(long mealId, double grams, double cal, double carbs, double fat, double protein) {
+        // We only need to store grams; macros are derived at read time now.
         ContentValues cv = new ContentValues();
-        cv.put("grams",   grams);
-        cv.put("cal",     cal);
-        cv.put("carbs",   carbs);
-        cv.put("fat",     fat);
-        cv.put("protein", protein);
-
-        int rows = getWritableDatabase().update("meal_entries", cv, "id = ?", new String[]{ String.valueOf(mealId) });
-        Log.d(TAG, "updateMealValues: mealId=" + mealId + " rows=" + rows);
-        return rows;
+        cv.put("grams", grams);
+        return getWritableDatabase().update("meal_entries", cv, "id = ?", new String[]{ String.valueOf(mealId) });
     }
+
 
 
     // Foods CRUD
@@ -111,19 +106,99 @@ public class DBHelper extends SQLiteOpenHelper {
 
     public Cursor getMealsFor(String date, String mealType) {
         Log.d(TAG, "getMealsFor: date=" + date + ", meal=" + mealType);
-        String[] args = new String[]{date, mealType};
         return getReadableDatabase().rawQuery(
-                "SELECT me.id, me.grams, me.cal, me.carbs, me.fat, me.protein, f.name " +
-                        "FROM meal_entries me JOIN foods f ON me.food_id=f.id " +
-                        "WHERE me.entry_date=? AND me.meal_type=? ORDER BY me.id DESC", args);
+                "SELECT " +
+                        "  me.id, " +
+                        "  me.grams, " +
+                        "  ROUND(f.cal     * me.grams/100.0, 0) AS cal, " +
+                        "  ROUND(f.carbs   * me.grams/100.0, 1) AS carbs, " +
+                        "  ROUND(f.fat     * me.grams/100.0, 1) AS fat, " +
+                        "  ROUND(f.protein * me.grams/100.0, 1) AS protein, " +
+                        "  f.name " +
+                        "FROM meal_entries me " +
+                        "JOIN foods f ON me.food_id = f.id " +
+                        "WHERE me.entry_date=? AND me.meal_type=? " +
+                        "ORDER BY me.id DESC",
+                new String[]{date, mealType}
+        );
     }
+
+    public int updateFoodById(long id, String name, double cal, double carbs, double fat, double protein) {
+        android.content.ContentValues cv = new android.content.ContentValues();
+        cv.put("name", name.trim());
+        cv.put("cal", cal);
+        cv.put("carbs", carbs);
+        cv.put("fat", fat);
+        cv.put("protein", protein);
+        // This preserves the same row id -> meal_entries keep working
+        return getWritableDatabase().update("foods", cv, "id=?", new String[]{ String.valueOf(id) });
+    }
+
+    // Lookup by title-cased name
+    public long findFoodIdByName(String name) {
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT id FROM foods " +
+                        "WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) " +
+                        "LIMIT 1",
+                new String[]{ name }
+        );
+        try {
+            return c.moveToFirst() ? c.getLong(0) : -1L;
+        } finally { if (c != null) c.close(); }
+    }
+
+
+    // Update in place + recompute all linked meals (provided earlier)
+    public void updateFoodAndRecalc(long foodId, String name,
+                                    double calPer100, double carbsPer100,
+                                    double fatPer100, double proteinPer100) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            // 1) Update the food row IN PLACE (no REPLACE)
+            ContentValues cv = new ContentValues();
+            cv.put("name", name.trim());
+            cv.put("cal", calPer100);
+            cv.put("carbs", carbsPer100);
+            cv.put("fat", fatPer100);
+            cv.put("protein", proteinPer100);
+            db.update("foods", cv, "id=?", new String[]{ String.valueOf(foodId) });
+
+            // 2) Recompute existing meal_entries that reference this food
+            //    Keep grams, recompute macros from new per-100g
+            db.execSQL(
+                    "UPDATE meal_entries " +
+                            "SET cal     = ROUND((? * grams) / 100.0, 0), " +
+                            "    carbs   = ROUND((? * grams) / 100.0, 2), " +
+                            "    fat     = ROUND((? * grams) / 100.0, 2), " +
+                            "    protein = ROUND((? * grams) / 100.0, 2) " +
+                            "WHERE food_id = ?",
+                    new Object[]{ calPer100, carbsPer100, fatPer100, proteinPer100, foodId }
+            );
+
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+
+
 
     public Cursor getTotalsForDay(String date) {
         Log.d(TAG, "getTotalsForDay: date=" + date);
         return getReadableDatabase().rawQuery(
-                "SELECT SUM(cal), SUM(carbs), SUM(fat), SUM(protein) FROM meal_entries WHERE entry_date=?",
+                "SELECT " +
+                        "  COALESCE(ROUND(SUM(f.cal     * me.grams/100.0), 0), 0) AS sum_cal, " +
+                        "  COALESCE(ROUND(SUM(f.carbs   * me.grams/100.0), 1), 0) AS sum_carbs, " +
+                        "  COALESCE(ROUND(SUM(f.fat     * me.grams/100.0), 1), 0) AS sum_fat, " +
+                        "  COALESCE(ROUND(SUM(f.protein * me.grams/100.0), 1), 0) AS sum_prot " +
+                        "FROM meal_entries me " +
+                        "JOIN foods f ON me.food_id = f.id " +
+                        "WHERE me.entry_date=?",
                 new String[]{date}
         );
+
     }
 
     public int deleteMeal(long id) {
